@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.GestureAppLock" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorPrimaryVariant">@color/primary_variant</item>
+        <item name="colorSecondary">@color/secondary</item>
+    </style>
+</resources>

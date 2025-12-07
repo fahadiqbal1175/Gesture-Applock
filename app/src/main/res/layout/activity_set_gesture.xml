@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:padding="16dp"
+    android:layout_marginTop="80dp">
+
+    <TextView
+        android:id="@+id/titleText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Set gesture for app"
+        android:textStyle="bold"
+        android:textSize="18sp"
+        android:paddingBottom="12dp" />
+
+    <TextView
+        android:id="@+id/sampleCount"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Samples: 0"
+        android:paddingBottom="8dp" />
+
+    <android.gesture.GestureOverlayView
+        android:id="@+id/gestureView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="@android:color/darker_gray"
+        android:gestureStrokeWidth="8"
+        android:gestureStrokeType="multiple"
+        android:fadeOffset="3000" />
+
+    <LinearLayout
+        android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center">
+        <Button android:id="@+id/btnClear" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Clear" />
+        <Button android:id="@+id/btnSaveSample" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Save sample" android:layout_marginStart="12dp"/>
+        <Button android:id="@+id/btnRemoveAll" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Remove all" android:layout_marginStart="12dp"/>
+        <Button android:id="@+id/btnDone" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Done" android:layout_marginStart="12dp"/>
+    </LinearLayout>
+</LinearLayout>
