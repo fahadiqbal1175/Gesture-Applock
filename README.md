@@ -78,7 +78,7 @@ app/
 
 ### 1️⃣ Clone the Repository
 
-git clone https://github.com/yourusername/GestureAppLock.git
+git clone https://github.com/hafizfahad1175/GestureAppLock.git
 
 ### 2️⃣ Open in Android Studio
 
