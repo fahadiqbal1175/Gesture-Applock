@@ -9,6 +9,10 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -17,18 +21,11 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.my8a.gestureapplock.R
 import com.my8a.gestureapplock.data.GestureStore
+import com.my8a.gestureapplock.data.Prefs
 import com.my8a.gestureapplock.ui.MainActivity
 import com.my8a.gestureapplock.ui.UnlockActivity
 import java.util.concurrent.TimeUnit
 
-/**
- * Robust monitor:
- * - collects usage events in a small window,
- * - only clears session-unlock when a package had MOVE_TO_BACKGROUND and NO later MOVE_TO_FOREGROUND
- *   in the same batch (so intra-app navigation won't clear the session).
- * - only launches UnlockActivity when the foreground package changes to a protected app and
- *   it's not already session-unlocked.
- */
 class ForegroundAppMonitorService : Service() {
 
     companion object {
@@ -41,7 +38,6 @@ class ForegroundAppMonitorService : Service() {
     }
 
     private val handler = Handler(Looper.getMainLooper())
-
     private var lastHandledForegroundPackage: String? = null
     private var lastHandledAt: Long = 0L
 
@@ -52,22 +48,37 @@ class ForegroundAppMonitorService : Service() {
         }
     }
 
-    override fun onCreate() { super.onCreate() }
+    override fun onCreate() {
+        super.onCreate()
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         createNotificationChannelIfNeeded()
-        val mainIntent = Intent(this, MainActivity::class.java)
-        val pendingMain = PendingIntent.getActivity(this, 0, mainIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+        // Intent to open the main activity when user taps the notification
+        val mainIntent = Intent(this, MainActivity::class.java)
+        val pendingMain = PendingIntent.getActivity(
+            this, 0, mainIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        // Build notification: small icon uses mipmap launcher to avoid missing resource.
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Gesture AppLock")
             .setContentText("Monitoring protected apps")
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.mipmap.ic_light) // fallback to launcher icon if you haven't added a notification-specific icon
             .setContentIntent(pendingMain)
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
+            .setOngoing(true)               // Make it persistent / not swipeable in most UIs
+            .setOnlyAlertOnce(true)
 
+        val notification = builder.build()
         startForeground(NOTIFICATION_ID, notification)
+
+        // Persist monitoring flag so app knows a monitor was started
+        Prefs.setMonitoringStarted(this, true)
+
+        // Start periodic polling
         handler.post(pollRunnable)
         return START_STICKY
     }
@@ -87,25 +98,22 @@ class ForegroundAppMonitorService : Service() {
         }
     }
 
-    /**
-     * Read usage events in a recent window, collect per-package event types and timestamps,
-     * then:
-     *  - For packages that had MOVE_TO_BACKGROUND and NO later MOVE_TO_FOREGROUND -> clear session-unlock.
-     *  - For the latest MOVE_TO_FOREGROUND package -> possibly show unlock (if protected and not session-unlocked).
-     */
     private fun pollUsageEvents() {
         val now = System.currentTimeMillis()
-        val usage = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val usage = try {
+            getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        } catch (t: Throwable) {
+            Log.w(TAG, "UsageStats not available: ${t.message}")
+            return
+        }
+
         val events = usage.queryEvents(now - EVENT_WINDOW_MS, now)
         val ev = UsageEvents.Event()
 
-        // Track last event type per package within this batch and the latest foreground package
         val sawBackground = mutableSetOf<String>()
-        val sawForegroundAfterBackground = mutableSetOf<String>() // packages that had background then foreground
+        val sawForegroundAfterBackground = mutableSetOf<String>()
         var latestForegroundPackage: String? = null
-
-        // We'll also remember event order to detect a foreground following a background
-        val packageEventList = mutableListOf<Triple<String, Int, Long>>() // (pkg, type, ts)
+        val packageEventList = mutableListOf<Triple<String, Int, Long>>()
 
         while (events.hasNextEvent()) {
             events.getNextEvent(ev)
@@ -121,9 +129,7 @@ class ForegroundAppMonitorService : Service() {
             }
         }
 
-        // Determine which background events are followed by a foreground for same package
-        // If a package had a background and a later foreground within this batch, consider it internal navigation.
-        val byPkgEvents = packageEventList.groupBy { it.first } // map pkg -> list of events
+        val byPkgEvents = packageEventList.groupBy { it.first }
         for ((pkg, list) in byPkgEvents) {
             val sorted = list.sortedBy { it.third }
             var sawBg = false
@@ -135,7 +141,6 @@ class ForegroundAppMonitorService : Service() {
             }
         }
 
-        // Clear session-unlock for packages that had background but NOT a subsequent foreground in this window
         for (pkg in sawBackground) {
             if (!sawForegroundAfterBackground.contains(pkg)) {
                 try {
@@ -145,11 +150,10 @@ class ForegroundAppMonitorService : Service() {
                     Log.w(TAG, "clearSessionUnlocked error for $pkg: ${t.message}")
                 }
             } else {
-                Log.d(TAG, "Keeping session-unlock for $pkg (background followed by foreground - internal nav)")
+                Log.d(TAG, "Keeping session-unlock for $pkg (internal nav)")
             }
         }
 
-        // Now handle the latest foreground (if any)
         if (latestForegroundPackage != null) {
             handleForegroundChange(latestForegroundPackage)
         }
@@ -159,13 +163,11 @@ class ForegroundAppMonitorService : Service() {
         val myPkg = packageName
         val homePkg = getHomePackageName()
 
-        // ignore ourselves and launcher/home
         if (pkg == myPkg || pkg == homePkg) {
             Log.d(TAG, "Ignoring package: $pkg")
             return
         }
 
-        // Skip if the package is session unlocked (user already unlocked during this session)
         if (GestureStore.isSessionUnlocked(this, pkg)) {
             lastHandledForegroundPackage = pkg
             lastHandledAt = System.currentTimeMillis()
@@ -173,7 +175,6 @@ class ForegroundAppMonitorService : Service() {
             return
         }
 
-        // Throttle repeated handling of the same package
         if (lastHandledForegroundPackage == pkg) {
             val since = System.currentTimeMillis() - lastHandledAt
             if (since < REOPEN_WINDOW_MS) {
@@ -190,7 +191,6 @@ class ForegroundAppMonitorService : Service() {
             return
         }
 
-        // Launch unlock
         val i = Intent(this, UnlockActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             .putExtra("package", pkg)
@@ -198,7 +198,7 @@ class ForegroundAppMonitorService : Service() {
         try {
             val label = packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
             i.putExtra("appLabel", label)
-        } catch (_: Exception) {}
+        } catch (_: Exception) { /* ignore */ }
 
         try {
             startActivity(i)
@@ -214,5 +214,19 @@ class ForegroundAppMonitorService : Service() {
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
         val res = packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
         return res?.activityInfo?.packageName
+    }
+
+    private fun drawableToBitmap(drawable: Drawable?): Bitmap? {
+        if (drawable == null) return null
+        if (drawable is BitmapDrawable) {
+            return drawable.bitmap
+        }
+        val width = drawable.intrinsicWidth.takeIf { it > 0 } ?: 128
+        val height = drawable.intrinsicHeight.takeIf { it > 0 } ?: 128
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.draw(canvas)
+        return bitmap
     }
 }

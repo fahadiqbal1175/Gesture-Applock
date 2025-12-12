@@ -26,6 +26,21 @@ object GestureStore {
         return lib
     }
 
+    /**
+     * Return true if the gesture library has any entries saved.
+     * Useful for deciding whether to auto-start the monitor on boot.
+     */
+    fun hasAnySavedGestures(context: Context): Boolean {
+        return try {
+            val lib = openLibrary(context)
+            val entries = lib.gestureEntries
+            entries != null && entries.isNotEmpty()
+        } catch (t: Throwable) {
+            false
+        }
+    }
+
+
     fun saveGestureForApp(context: Context, packageName: String, gesture: Gesture): Boolean {
         val lib = openLibrary(context)
         lib.addGesture(packageName, gesture)

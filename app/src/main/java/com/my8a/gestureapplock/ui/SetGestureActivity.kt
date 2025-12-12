@@ -1,13 +1,24 @@
 package com.my8a.gestureapplock.ui
 
+import android.content.Intent
+import android.app.AppOpsManager
+import android.content.pm.PackageManager
 import android.gesture.Gesture
+import android.content.Context
+import android.net.Uri
 import android.gesture.GestureOverlayView
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.MotionEvent
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import com.my8a.gestureapplock.data.GestureStore
+import com.my8a.gestureapplock.data.Prefs
 import com.my8a.gestureapplock.databinding.ActivitySetGestureBinding
+import com.my8a.gestureapplock.service.ForegroundAppMonitorService
 
 class SetGestureActivity : AppCompatActivity() {
 
@@ -15,11 +26,7 @@ class SetGestureActivity : AppCompatActivity() {
     private var packageNameExtra: String? = null
     private var appLabel: String? = null
 
-    // Minimum samples required
     private val MIN_SAMPLES = 3
-
-    // If true -> automatically finish the activity after MIN_SAMPLES have been saved.
-    // If false -> user must press Done.
     private val AUTO_CLOSE_AFTER_MIN_SAMPLES = true
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -58,8 +65,8 @@ class SetGestureActivity : AppCompatActivity() {
                     Toast.makeText(this, "Sample saved. Draw $need more.", Toast.LENGTH_SHORT).show()
                 } else {
                     Toast.makeText(this, "Enough samples saved.", Toast.LENGTH_SHORT).show()
+                    ensurePermissionsAndStartMonitor()
                     if (AUTO_CLOSE_AFTER_MIN_SAMPLES) {
-                        // user is done — finish and return to app list
                         finish()
                         return@setOnClickListener
                     }
@@ -78,13 +85,12 @@ class SetGestureActivity : AppCompatActivity() {
                 Toast.makeText(this, "Please save at least $MIN_SAMPLES samples. Current: $count", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
+            ensurePermissionsAndStartMonitor()
             Toast.makeText(this, "Gesture setup complete", Toast.LENGTH_SHORT).show()
             finish()
         }
 
-        binding.btnClear.setOnClickListener {
-            binding.gestureView.clear(false)
-        }
+        binding.btnClear.setOnClickListener { binding.gestureView.clear(false) }
 
         binding.btnRemoveAll.setOnClickListener {
             val pkg = packageNameExtra ?: return@setOnClickListener
@@ -93,10 +99,98 @@ class SetGestureActivity : AppCompatActivity() {
                 Toast.makeText(this, "All samples removed", Toast.LENGTH_SHORT).show()
                 updateSampleCount()
             } else {
-                // Even if library remove fails, mapping is cleared by function
                 Toast.makeText(this, "Removed mapping (library removal may be limited on device).", Toast.LENGTH_SHORT).show()
                 updateSampleCount()
             }
+        }
+    }
+
+    private fun ensurePermissionsAndStartMonitor() {
+        // Usage Access check (same as MainActivity)
+        val hasUsage = try {
+            val appOps = getSystemService(AppOpsManager::class.java)
+            val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                appOps.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName)
+            } else {
+                appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName)
+            }
+            mode == AppOpsManager.MODE_ALLOWED
+        } catch (t: Throwable) {
+            try {
+                val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
+                val now = System.currentTimeMillis()
+                val stats = usageStatsManager.queryUsageStats(android.app.usage.UsageStatsManager.INTERVAL_DAILY, now - 60_000L, now)
+                stats != null && stats.isNotEmpty()
+            } catch (_: Throwable) { false }
+        }
+
+        if (!hasUsage) {
+            AlertDialog.Builder(this)
+                .setTitle("Usage Access required")
+                .setMessage("Please grant Usage Access first. You will be taken to settings.")
+                .setPositiveButton("Open settings") { _, _ ->
+                    startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+            return
+        } else {
+            Prefs.setUsageGranted(this, true)
+        }
+
+        // Overlay check
+        val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            Settings.canDrawOverlays(this)
+        } else true
+
+        if (!hasOverlay) {
+            AlertDialog.Builder(this)
+                .setTitle("Overlay permission required")
+                .setMessage("Please allow the app to draw over other apps so the unlock screen can appear. You will be taken to settings.")
+                .setPositiveButton("Open settings") { _, _ ->
+                    startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+            return
+        } else {
+            Prefs.setOverlayGranted(this, true)
+        }
+
+        // Notification check: request or open settings
+        val hasNotif = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        } else true
+
+        if (!hasNotif) {
+            // Friendly dialog to request notification permission (MainActivity shows the sequence too)
+            AlertDialog.Builder(this)
+                .setTitle("Notification permission required")
+                .setMessage("Gesture AppLock needs notification permission so the monitoring notification can be shown. Grant it in the next screen.")
+                .setPositiveButton("Open settings") { _, _ ->
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        // No launcher here; open app notification settings as fallback
+                        startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                            putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                        })
+                    } else {
+                        startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                            putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                        })
+                    }
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+            return
+        } else {
+            Prefs.setNotificationGranted(this, true)
+        }
+
+        // both perms satisfied -> start monitor if not already started
+        if (!Prefs.isMonitoringStarted(this)) {
+            val svc = Intent(this, ForegroundAppMonitorService::class.java)
+            ContextCompat.startForegroundService(this, svc)
+            Prefs.setMonitoringStarted(this, true)
         }
     }
 

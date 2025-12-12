@@ -15,6 +15,9 @@
 
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
 
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+
 
     <!-- allow discovering apps that respond to the launcher (MAIN + LAUNCHER) -->
     <queries>
@@ -57,6 +60,16 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="specialUse" />
+
+        <receiver
+            android:name=".receiver.BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
 
 
     </application>

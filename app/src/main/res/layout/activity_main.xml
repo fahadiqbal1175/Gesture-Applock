@@ -54,19 +54,17 @@
             android:orientation="horizontal"
             android:gravity="center_vertical">
 
-            <Button
-                android:id="@+id/btnUsageAccess"
-                android:layout_width="0dp"
-                android:layout_weight="1"
+            <!-- replace the old bottom buttons block with this -->
+            <TextView
+                android:id="@+id/statusText"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Usage Access" />
+                android:padding="12dp"
+                android:text="Start by setting a gesture for any app. Monitoring will start automatically."
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:textColor="?android:attr/textColorSecondary" />
 
-            <Button
-                android:id="@+id/btnStartMonitoring"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:text="Start Monitor" />
         </LinearLayout>
     </LinearLayout>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
