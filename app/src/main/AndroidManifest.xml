@@ -3,31 +3,20 @@
     xmlns:tools="http://schemas.android.com/tools">
     <!-- You need this permission for ForegroundService to work -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-
-    <!-- You also need this permission for UsageStatsManager to work -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" /> <!-- You also need this permission for UsageStatsManager to work -->
     <uses-permission
         android:name="android.permission.PACKAGE_USAGE_STATS"
-        tools:ignore="ProtectedPermissions" />
-
-    <!-- You might need this for POST_NOTIFICATIONS on Android 13+ -->
+        tools:ignore="ProtectedPermissions" /> <!-- You might need this for POST_NOTIFICATIONS on Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
-
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-
-
-
-    <!-- allow discovering apps that respond to the launcher (MAIN + LAUNCHER) -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" /> <!-- allow discovering apps that respond to the launcher (MAIN + LAUNCHER) -->
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
+
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
     </queries>
-
-
 
     <application
         android:allowBackup="true"
@@ -38,21 +27,27 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.GestureAppLock">
+        <!-- Splash Screen -->
+        <activity
+            android:name=".ui.SplashActivity"
+            android:exported="true"
+            android:theme="@style/Theme.GestureAppLock.NoActionBar">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
         <activity
             android:name=".ui.MainActivity"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
-            </intent-filter>
+            android:exported="false">
         </activity>
-
-
         <activity android:name=".ui.SetGestureActivity" />
         <activity
             android:name=".ui.UnlockActivity"
-            android:launchMode="singleTask"
             android:excludeFromRecents="true"
+            android:launchMode="singleTask"
             android:taskAffinity="" />
 
         <service
@@ -69,9 +64,6 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
-
-
-
     </application>
 
 </manifest>

@@ -4,4 +4,10 @@
         <item name="colorPrimaryVariant">@color/primary_variant</item>
         <item name="colorSecondary">@color/secondary</item>
     </style>
+
+    <!-- Splash screen theme (NO ActionBar) -->
+    <style name="Theme.GestureAppLock.NoActionBar"
+        parent="Theme.MaterialComponents.DayNight.NoActionBar">
+
+    </style>
 </resources>
